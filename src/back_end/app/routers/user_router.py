@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead
-from werkzeug.security import generate_password_hash  # optional, simple hashing
+from werkzeug.security import generate_password_hash, check_password_hash # optional, simple hashing
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -69,4 +69,9 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 	db.commit()
 	return {"detail": "User deleted successfully"}
 
-#TODO : Add The rest of the end points and routers for the other models
+@router.post("/login", response_model=UserRead)
+def login_user(email: str = Body(...), password: str = Body(...), db: Session = Depends(get_db)):
+	user = db.query(User).filter(User.email == email).first()
+	if not user or not check_password_hash(user.password_hash, password):
+		raise HTTPException(status_code=401, detail="Invalid email or password")
+	return user

@@ -22,10 +22,18 @@ services:
     restart: unless-stopped
     environment:
       DATABASEURL: postgres://admin:admin@db:5432/teamtasks
-    ports:
-      - "8000:8000"
     depends_on:
       - db
+
+  frontend:
+    build:
+      context: ./src/front_end
+    container_name: teamtasks-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
 
 volumes:
   db-data:

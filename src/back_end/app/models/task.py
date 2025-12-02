@@ -4,7 +4,7 @@ from app.models import Base
 class Task(Base):
 	__tablename__ = "tasks"
 
-	idf = Column(Integer, primary_key=True)
+	id = Column(Integer, primary_key=True)
 	project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"))
 	parent_task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True)
 	title = Column(String(255), nullable=False)

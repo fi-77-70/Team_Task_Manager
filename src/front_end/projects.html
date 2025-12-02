@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Projects</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <h1>Welcome, <span id="username"></span>!</h1>
+  <h2>Your Projects</h2>
+
+  <div id="projects-container"></div>
+
+  <div class="input-group">
+    <h3>Create New Project</h3>
+    <input type="text" id="new-project-name" placeholder="Project name">
+    <input type="text" id="new-project-desc" placeholder="Description">
+    <button id="create-project-btn">Create Project</button>
+  </div>
+
+  <!-- Modal: Task -->
+  <div id="task-modal" class="modal">
+    <div class="modal-content">
+      <h3>Create Task</h3>
+      <input type="text" id="modal-task-title" placeholder="Task title">
+      <textarea id="modal-task-desc" placeholder="Task description (optional)"></textarea>
+      <button id="modal-task-save">Save Task</button>
+      <button onclick="closeModal('task-modal')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Modal: Project Member -->
+  <div id="member-modal" class="modal">
+    <div class="modal-content">
+      <h3>Add Member</h3>
+      <input type="text" id="modal-member-email" placeholder="User email">
+      <button id="modal-member-save">Add Member</button>
+      <button onclick="closeModal('member-modal')">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Modal: Task Assignee -->
+  <div id="assignee-modal" class="modal">
+    <div class="modal-content">
+      <h3>Assign User</h3>
+      <select id="modal-assignee-select"></select>
+      <button id="modal-assignee-save">Assign User</button>
+      <button onclick="closeModal('assignee-modal')">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "/api";
+    const userId = parseInt(localStorage.getItem("user_id"));
+    const username = localStorage.getItem("username");
+    document.getElementById("username").textContent = username;
+    let allUsers = [];
+    let currentProjectId = null;
+    let currentTaskId = null;
+
+    // ------------------- Modals -------------------
+    function openModal(modalId, projectId = null, taskId = null) {
+      currentProjectId = projectId;
+      currentTaskId = taskId;
+      document.getElementById(modalId).style.display = "block";
+
+      if(modalId === 'assignee-modal') {
+        const select = document.getElementById("modal-assignee-select");
+        select.innerHTML = "";
+        allUsers.forEach(u => {
+          const option = document.createElement("option");
+          option.value = u.id;
+          option.textContent = u.name + " (" + u.email + ")";
+          select.appendChild(option);
+        });
+      }
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = "none";
+      currentProjectId = null;
+      currentTaskId = null;
+      if(modalId === 'task-modal') {
+        document.getElementById("modal-task-title").value = "";
+        document.getElementById("modal-task-desc").value = "";
+      }
+      if(modalId === 'member-modal') {
+        document.getElementById("modal-member-email").value = "";
+      }
+    }
+
+    // ------------------- Fetch Data -------------------
+    async function fetchUsers() {
+      const res = await fetch(`${API_BASE}/users/`);
+      allUsers = res.ok ? await res.json() : [];
+    }
+
+    async function fetchUserProjects() {
+      const res = await fetch(`${API_BASE}/projects/?user_id=${userId}`);
+      const projects = await res.json();
+      renderProjects(projects);
+    }
+
+    async function fetchProjectMembers(projectId) {
+      const res = await fetch(`${API_BASE}/project_members/?project_id=${projectId}`);
+      return res.ok ? await res.json() : [];
+    }
+
+    async function fetchProjectTasks(projectId) {
+      const res = await fetch(`${API_BASE}/tasks/?project_id=${projectId}`);
+      return res.ok ? await res.json() : [];
+    }
+
+    async function fetchTaskAssignees(taskId) {
+      const res = await fetch(`${API_BASE}/task_assignees/${taskId}`);
+      return res.ok ? await res.json() : [];
+    }
+
+    // ------------------- Create / Delete -------------------
+    async function createProject() {
+      const name = document.getElementById("new-project-name").value;
+      const description = document.getElementById("new-project-desc").value;
+      if (!name) return alert("Project name is required");
+
+      const res = await fetch(`${API_BASE}/projects/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description, created_by: userId })
+      });
+      if (!res.ok) return alert("Failed to create project");
+      document.getElementById("new-project-name").value = "";
+      document.getElementById("new-project-desc").value = "";
+      fetchUserProjects();
+    }
+
+    async function deleteProject(projectId, createdBy) {
+      if (userId !== createdBy) return alert("Only creator can delete this project");
+      const res = await fetch(`${API_BASE}/projects/${projectId}`, { method: "DELETE" });
+      if (!res.ok) return alert("Failed to delete project");
+      fetchUserProjects();
+    }
+
+    async function saveTaskFromModal() {
+      const title = document.getElementById("modal-task-title").value;
+      if (!title) return alert("Task title is required");
+      const description = document.getElementById("modal-task-desc").value;
+
+      const res = await fetch(`${API_BASE}/tasks/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: currentProjectId, title, description, created_by: userId })
+      });
+      if (!res.ok) return alert("Failed to create task");
+      closeModal('task-modal');
+      fetchUserProjects();
+    }
+
+    async function deleteTask(taskId, createdBy) {
+      if (userId !== createdBy) return alert("Only creator can delete this task");
+      const res = await fetch(`${API_BASE}/tasks/${taskId}`, { method: "DELETE" });
+      if (!res.ok) return alert("Failed to delete task");
+      fetchUserProjects();
+    }
+
+    async function toggleTaskStatus(task) {
+      if (!task.assigned_to?.includes(userId)) return alert("You are not assigned to this task");
+      const nextStatus = task.status === "pending" ? "ongoing" : task.status === "ongoing" ? "completed" : "completed";
+
+      const res = await fetch(`${API_BASE}/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...task, status: nextStatus })
+      });
+      if (!res.ok) return alert("Failed to update task status");
+      fetchUserProjects();
+    }
+
+    async function saveMemberFromModal() {
+      const email = document.getElementById("modal-member-email").value;
+      if (!email) return alert("User email is required");
+      const user = allUsers.find(u => u.email === email);
+      if (!user) return alert("User not found");
+
+      const res = await fetch(`${API_BASE}/project_members/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: currentProjectId, user_id: user.id, role: "member" })
+      });
+      if (!res.ok) return alert("Failed to add member");
+      closeModal('member-modal');
+      fetchUserProjects();
+    }
+
+    async function removeProjectMember(projectId, userIdToRemove) {
+      if (userIdToRemove === userId) return alert("Cannot remove yourself");
+      const res = await fetch(`${API_BASE}/project_members/${projectId}/${userIdToRemove}`, { method: "DELETE" });
+      if (!res.ok) return alert("Failed to remove member");
+      fetchUserProjects();
+    }
+
+    async function saveAssigneeFromModal() {
+      const assigneeId = parseInt(document.getElementById("modal-assignee-select").value);
+      const res = await fetch(`${API_BASE}/task_assignees/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: currentTaskId, user_id: assigneeId })
+      });
+      if (!res.ok) return alert("Failed to assign user");
+      closeModal('assignee-modal');
+      fetchUserProjects();
+    }
+
+    async function removeTaskAssignee(taskId, userIdToRemove) {
+      const res = await fetch(`${API_BASE}/task_assignees/${taskId}/${userIdToRemove}`, { method: "DELETE" });
+      if (!res.ok) return alert("Failed to remove assignee");
+      fetchUserProjects();
+    }
+
+    // ------------------- Render -------------------
+    async function renderProjects(projects) {
+      const container = document.getElementById("projects-container");
+      container.innerHTML = "";
+
+      for (const project of projects) {
+        const creator = allUsers.find(u => u.id === project.created_by)?.name || "Unknown";
+        const isCreator = project.created_by === userId;
+
+        const projectDiv = document.createElement("div");
+        projectDiv.className = "project";
+        projectDiv.innerHTML = `
+          <strong>${project.name}</strong> (${isCreator ? "<span class='highlight-you'>You</span>" : "Created by: " + creator})<br>
+          ${project.description || ""}<br>
+          ${isCreator ? `<button onclick="deleteProject(${project.id}, ${project.created_by})">Delete Project</button>` : ""}
+          <button onclick="openModal('task-modal', ${project.id})">Add Task</button>
+          <button onclick="openModal('member-modal', ${project.id})">Add Member</button>
+          <div id="members-${project.id}"></div>
+          <div id="tasks-${project.id}"></div>
+        `;
+        container.appendChild(projectDiv);
+
+        // Members
+        const membersDiv = document.getElementById(`members-${project.id}`);
+        const members = await fetchProjectMembers(project.id);
+        membersDiv.innerHTML = "<div class='section-title'>Members:</div>";
+        members.forEach(m => {
+          const memberDiv = document.createElement("div");
+          memberDiv.className = "member";
+          const memberName = allUsers.find(u => u.id === m.user_id)?.name || "Unknown";
+          memberDiv.innerHTML = `${memberName} (${m.role}) ${m.user_id !== userId ? `<button onclick="removeProjectMember(${project.id}, ${m.user_id})">Remove</button>` : ""}`;
+          membersDiv.appendChild(memberDiv);
+        });
+
+        // Tasks
+        const tasks = await fetchProjectTasks(project.id);
+        const tasksDiv = document.getElementById(`tasks-${project.id}`);
+        tasksDiv.innerHTML = "<div class='section-title'>Tasks:</div>";
+
+        for (const task of tasks) {
+          const assignees = await fetchTaskAssignees(task.id);
+          const taskDiv = document.createElement("div");
+          taskDiv.className = "task " + task.status;
+          const assignedNames = assignees.map(a => allUsers.find(u => u.id === a.user_id)?.name || "Unknown").join(", ") || "None";
+
+          taskDiv.innerHTML = `
+            <strong>${task.title}</strong> [${task.status}]<br>
+            Created by: ${allUsers.find(u => u.id === task.created_by)?.name || "Unknown"} | Assigned to: ${assignedNames}<br>
+            ${task.assigned_to?.includes(userId) ? `<button onclick='toggleTaskStatus(${JSON.stringify(task)})'>Next Status</button>` : ""}
+            ${task.created_by === userId ? `<button onclick='deleteTask(${task.id}, ${task.created_by})'>Delete Task</button>` : ""}
+            <button onclick='openModal("assignee-modal", ${project.id}, ${task.id})'>Assign User</button>
+          `;
+
+          assignees.forEach(a => {
+            const assigneeDiv = document.createElement("div");
+            assigneeDiv.className = "assignee";
+            assigneeDiv.innerHTML = `${allUsers.find(u => u.id === a.user_id)?.name || "Unknown"} <button onclick="removeTaskAssignee(${task.id}, ${a.user_id})">Remove</button>`;
+            taskDiv.appendChild(assigneeDiv);
+          });
+
+          tasksDiv.appendChild(taskDiv);
+        }
+      }
+    }
+
+    // ------------------- Event Listeners -------------------
+    document.getElementById("create-project-btn").addEventListener("click", createProject);
+    document.getElementById("modal-task-save").addEventListener("click", saveTaskFromModal);
+    document.getElementById("modal-member-save").addEventListener("click", saveMemberFromModal);
+    document.getElementById("modal-assignee-save").addEventListener("click", saveAssigneeFromModal);
+
+    fetchUsers().then(fetchUserProjects);
+  </script>
+</body>
+</html>
