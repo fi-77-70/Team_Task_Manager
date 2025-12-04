@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/fi-77-70/frontend:v0.0.4
+          image: ghcr.io/fi-77-70/frontend:v0.0.5
           ports:
             - containerPort: 80
       imagePullSecrets:
